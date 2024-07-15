@@ -1,4 +1,3 @@
-
 from langflow.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES
 from langflow.base.io.chat import ChatComponent
 from langflow.io import (
@@ -90,6 +89,7 @@ class ChatInput(ChatComponent):
 # ----------------- PromptComponent Component ---------------- #
 from langflow.custom import Component
 
+
 class PromptComponent(Component):
     display_name: str = "Prompt"
     description: str = "Create a prompt template with dynamic variables."
@@ -106,7 +106,9 @@ class PromptComponent(Component):
     ]
 
     async def build_prompt(self) -> Message:
-        prompt = await Message.from_template_and_variables(template=self.template, **self._attributes) 
+        prompt = await Message.from_template_and_variables(
+            template=self.template, **self._attributes
+        )
         self.status = prompt.text
         return prompt
 
@@ -239,6 +241,7 @@ class GoogleGenerativeAIComponent(LCModelComponent):
 
 
 # ----------------- ChatOutput Component ---------------- #
+
 from langflow.base.io.chat import ChatComponent
 from langflow.io import DropdownInput, MessageTextInput, Output
 from langflow.schema.message import Message
@@ -308,7 +311,38 @@ class ChatOutput(ChatComponent):
 
 # Assuming these variables are defined somewhere in your application
 google_api_key = st.secrets["GOOGLE_API_KEY"]
-prompt_template = "You are a virtual assistant specializing in healthcare. Your purpose is to provide accurate and reliable information about medical conditions, treatments, medications, and healthy lifestyle advice. You can also help users manage their medication schedules, provide reminders for doctor appointments, and offer emotional support. Always ensure your responses are clear, concise, and respectful. When you encounter a question you cannot answer, advise the user to consult with a healthcare professional"
+prompt_template = (
+    "You are a virtual assistant specializing in healthcare. "
+    "Your purpose is to provide accurate and reliable information about "
+    "medical conditions, treatments, medications, and healthy lifestyle advice. "
+    "You can also help users manage their medication schedules, provide reminders "
+    "for doctor appointments, and offer emotional support. Always ensure your "
+    "responses are clear, concise, and respectful. When you encounter a question "
+    "you cannot answer, advise the user to consult with a healthcare professional"
+)
+
+
+# Function to process user input and get response
+async def get_response(user_input):
+    # Prepare input for the model
+    chat_input = ChatInput(input_value=user_input)
+    message = chat_input.message_response()
+    prompt_component = PromptComponent(template=prompt_template)
+    prompt = await prompt_component.build_prompt()
+
+    # Set the prompt as the system message
+    google_ai_component = GoogleGenerativeAIComponent(
+        google_api_key=google_api_key,
+        system_message=prompt.text,
+        input_value=message,
+    )
+
+    # Execute the model and retrieve the response
+    response_message = await google_ai_component.agenerate_response()
+    chat_output = ChatOutput(input_value=response_message)
+    output_message = chat_output.message_response()
+
+    return output_message.text
 
 
 # ---------------- Streamlit UI ----------------- #
@@ -316,26 +350,28 @@ async def main():  # Make main asynchronous
     st.title("HealthAI: Your Virtual Health Assistant")
 
     st.sidebar.title("Menu")
-    menu_options = ["Home", "Chat with HealthAI", "About"]
+    menu_options = [
+        "Home",
+        "Chat with HealthAI",
+        "Symptom Checker",
+        "Health Tips",
+        "Medication Tracker",
+        "Doctor Consultation",
+        "Personal Health Records",
+        "Emergency Contacts",
+        "Health News and Updates",
+        "About",
+    ]
     choice = st.sidebar.selectbox("Select an option", menu_options)
 
     if choice == "Home":
         st.write("Welcome to HealthAI! Use the menu to navigate.")
     elif choice == "Chat with HealthAI":
         st.subheader("Chat with HealthAI")
-    
 
         # Initialize chat history
         if "messages" not in st.session_state:
             st.session_state.messages = []
-
-        # Initialize components
-        chat_input = ChatInput()
-        prompt_component = PromptComponent()
-        google_ai_component = GoogleGenerativeAIComponent(
-            google_api_key=google_api_key
-        )
-        chat_output = ChatOutput()
 
         # Get user input
         user_input = st.text_input("You:")
@@ -343,36 +379,85 @@ async def main():  # Make main asynchronous
             # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": user_input})
 
-            # Prepare input for the model
-            chat_input.input_value = user_input
-            message = chat_input.message_response()
-            prompt_component.template = prompt_template
-            prompt = await prompt_component.build_prompt()
+            # Get AI response
+            response = await get_response(user_input)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": response}
+            )
 
-            # Set the prompt as the system message
-            google_ai_component.system_message = prompt.text 
-
-            # Provide user input as a message
-            google_ai_component.input_value = message
-
-            # Execute the model and retrieve the response 
-            try:
-                response_message = await google_ai_component.atext_response()  
-            except AttributeError:
-                response_message = google_ai_component.text_response() 
-
-            chat_output.input_value = response_message
-            output_message = chat_output.message_response()
-
-            st.session_state.messages.append({"role": "assistant", "content": output_message.text})
-        
         # Display chat history
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+    elif choice == "Symptom Checker":
+        symptoms = st.text_input("Describe your symptoms:")
+        if st.button("Check Symptoms"):
+            try:
+                # Assuming 'flow' function is defined somewhere
+                response = await get_response(symptoms)
+                st.write(response)
+            except Exception as e:
+                st.error(f"Error while checking symptoms: {e}")
+
+    elif choice == "Health Tips":
+        if st.button("Get Health Tips"):
+            tips_prompt = "Provide general health tips for a healthy lifestyle."
+            try:
+                # Assuming 'flow' function is defined somewhere
+                tips_response = await get_response(tips_prompt)
+                st.write(tips_response)
+            except Exception as e:
+                st.error(f"Error while getting health tips: {e}")
+
+    elif choice == "Medication Tracker":
+        medication = st.text_input("Enter your medication:")
+        medication_time = st.time_input("Enter the time to remind you:")
+        if st.button("Set Medication Reminder"):
+            st.write(
+                f"Reminder set for {medication} at {medication_time}."
+            )
+
+    elif choice == "Doctor Consultation":
+        doctor_name = st.text_input("Enter doctor's name:")
+        appointment_date = st.date_input("Select appointment date:")
+        appointment_time = st.time_input("Select appointment time:")
+        if st.button("Schedule Appointment"):
+            st.write(
+                f"Appointment scheduled with Dr. {doctor_name} on {appointment_date} at {appointment_time}."
+            )
+
+    elif choice == "Personal Health Records":
+        uploaded_files = st.file_uploader(
+            "Upload your medical documents:", accept_multiple_files=True
+        )
+        if uploaded_files:
+            for uploaded_file in uploaded_files:
+                st.write(f"Uploaded file: {uploaded_file.name}")
+
+    elif choice == "Emergency Contacts":
+        emergency_contact = st.text_input("Enter emergency contact name:")
+        emergency_number = st.text_input("Enter emergency contact number:")
+        if st.button("Save Emergency Contact"):
+            st.write(
+                f"Emergency contact {emergency_contact} with number {emergency_number} saved."
+            )
+
+    elif choice == "Health News and Updates":
+        if st.button("Get Health News"):
+            news_prompt = "Provide the latest health news and updates."
+            try:
+                # Assuming 'flow' function is defined somewhere
+                news_response = await get_response(news_prompt)
+                st.write(news_response)
+            except Exception as e:
+                st.error(f"Error while getting health news: {e}")
+
     elif choice == "About":
-        st.write("HealthAI is your virtual assistant for health-related inquiries.")
+        st.write(
+            "HealthAI is your virtual assistant for health-related inquiries."
+        )
+
 
 if __name__ == "__main__":
-    asyncio.run(main())  # Run the asynchronous main function
+    asyncio.run(main()) 
